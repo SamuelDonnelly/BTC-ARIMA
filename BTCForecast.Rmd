@@ -1,0 +1,122 @@
+---
+title: "BTC Forecast"
+author: "Sam Donnelly"
+date: "8/3/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(options(scipen = 999), warning = FALSE, message = FALSE)
+```
+
+## Packages 
+```{r}
+library(forecast)
+library(tidyverse)
+library(dplyr)
+library(readr)
+library(zoo)
+library(lubridate)
+library(rugarch)
+library(tseries)
+```
+
+## Read in data
+```{r}
+bitcoin <- read.csv("C:/Users/donne/Downloads/btc-usd-max (1).csv") 
+```
+
+## Create Date Column
+```{r}
+bitcoin <- bitcoin %>%
+  rename(date = snapped_at) #rename date column
+
+bitcoin$date <-  as.yearmon(bitcoin$date) #Change to date formate
+
+bitcoin <- bitcoin %>%
+  subset(select = -c(3, 4)) #remove market cap and volumn 
+```
+
+## Run only for by month
+```{r}
+bitcoin <- bitcoin %>%
+  group_by(date) %>%
+  summarise(price = mean(price))
+```
+
+## Declare time series data (by month)
+```{r}
+b <- ts(bitcoin[, 2], start = c(2013, 4), end = c(2020, 8), frequency = 12)
+```
+
+## Declare time series data (by day)
+```{r}
+b <- ts(bitcoin[, 2], start = c(2013, 118), end = c(2020, 215), frequency = 365)
+```
+
+## Preliminary Analysis
+```{r}
+## Time Plot
+autoplot(b) + 
+  ggtitle("Bitcoin Price Per Day") +
+  ylab("Price")
+#Data has trend, need to transform into stationary
+```
+
+## Remove Trend
+```{r}
+db <- diff(b)
+
+autoplot(db) + 
+  ggtitle("Bitcoin Price Per Day") +
+  ylab("Price Difference")
+## Data now looks trend stationary
+```
+
+## Look at seasonality
+```{r}
+ggmonthplot(db) +
+  ggtitle("Season Plot: Change in Daily Price") +
+  ylab("Price Change")
+```
+
+## Check Naive Model *SD = 543.4248*
+```{r}
+fit <- snaive(db)
+summary(fit)
+checkresiduals(fit)
+```
+
+## Check Lag 
+```{r}
+Box.test(fit$residuals, type="Ljung-Box") # Check lag: 
+```
+
+## Check expentional smoothing model *SD = 1250.308* (this model not appropriate)
+```{r}
+fit_ets <- ets(db)
+summary(fit_ets)
+checkresiduals(fit_ets)
+```
+
+## Check ARIMA Model *SD = 1196.578*
+```{r}
+fit_arima <- auto.arima(b, trace = 1)
+summary(fit_arima)
+checkresiduals(fit_arima)
+```
+
+## Check Lag 
+```{r}
+tsdiag(fit_arima)
+Box.test(fit_arima$residuals, lag= 3, type="Ljung-Box") #want pvalue > .05
+Box.test(fit_arima$residuals, type="Ljung-Box") #want pvalue > .05
+adf.test(db) #want pvalue < .05
+kpss.test(db, null = "Trend") #want pvalue > 0.5 Means data is stationary 
+```
+
+## Forecast
+```{r}
+fcast <- forecast(fit_arima, h=1)
+autoplot(fcast)
+```
